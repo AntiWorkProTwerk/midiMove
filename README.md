@@ -2,7 +2,13 @@
 
 An [Ableton Live Extension](https://www.ableton.com/) that animates a MIDI clip's note grid **live**, moving the notes with physics in real time while the clip plays.
 
-The first mode is a **pendulum**: the whole note column swings horizontally across the time axis and bobs slightly in pitch at the extremes, like a bob on a rod. The swing is **tempo-synced** — its period is defined in beats and scales with the project BPM.
+Five physics modes ship today, picked from a carousel window:
+
+- **Pendulum** — the whole note column swings across the time axis and bobs slightly in pitch at the extremes, like a bob on a rod (tempo-synced).
+- **Spring Bounce** — the column is plucked and overshoots, settling with damped-spring physics, re-triggered every couple of beats.
+- **Orbit** — each note rides a small circle in (time, pitch), spread around the ring so the chord rotates.
+- **Wave** — a sine travels across the notes by start-time, so each note bobs in pitch a step behind the last (a Mexican wave).
+- **Gravity Drop** — notes fall in pitch under gravity and bounce at the bottom, losing energy each bounce, then re-drop.
 
 ## How it works
 
@@ -13,15 +19,19 @@ dx = A·sin(θ)        // horizontal swing along the time axis (beats)
 dy = A·(1 − cos θ)   // slight vertical pitch bob (rises at both extremes)
 ```
 
-The engine is built around a pure `SimulationFn` (`(restNotes, elapsedSeconds, ctx) => notes`), so adding new modes (spring, gravity-bounce, orbit) is just another function plus a Start command.
+The engine is built around a pure `SimulationFn` (`(restNotes, elapsedSeconds, ctx) => notes`). Each mode is one such function plus a metadata entry in the `MODES` registry — that registry drives both the animation and the chooser window automatically, so adding a mode is a single edit.
+
+The **chooser** is an HTML carousel shown via `ui.showModalDialog`. Because the dialog is modal (it can't preview on the real clip behind it), each mode renders an animated `<canvas>` preview *inside the window*. The shared `PHYSICS` constants block is the single source of truth: it's injected into the window so the preview and the live clip animate with identical numbers.
 
 ## Usage
 
 1. Enable Live's **Preferences → Extensions → Developer Mode**.
 2. `npm install` then `npm start` to build and launch the Extension Host.
-3. Right-click a MIDI clip → **Pendulum: Start** / **Stop Animation**.
+3. Right-click a MIDI clip → **midiMove: Animate…** to open the carousel. Flip with **◀ / ▶** (or arrow keys), watch the preview, then **Apply** (Enter). The window stays open across applies — keep auditioning modes, then **Close** (Esc). **midiMove: Stop Animation** — or the window's **Stop** — restores the clip.
 
-An empty clip is seeded with a centered C-E-G triad to swing. Stopping restores the original notes.
+> The window re-opens itself after each Apply because Live's `showModalDialog` is one-shot; that's what lets it "stay open" while still messaging the host.
+
+An empty clip is seeded with a centered C-E-G triad to animate. Stopping restores the original notes.
 
 ## Notes
 

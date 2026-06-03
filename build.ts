@@ -14,4 +14,5 @@ await esbuild.build({
   logLevel: "info",
   minify: production,
   sourcemap: !production,
+  loader: { ".html": "text" }, // inline chooser.html as a string for the data: URL
 });
