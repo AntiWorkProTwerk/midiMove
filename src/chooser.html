@@ -109,6 +109,36 @@
 
     .hint { font-size: 0.9rem; color: var(--c-text-secondary); text-align: center; margin-top: -0.2em; }
 
+    .controls { display: flex; flex-direction: column; gap: 0.5em; }
+    .ctl { display: flex; flex-direction: column; gap: 0.2em; font-size: 0.95rem; color: var(--c-text-secondary); }
+    .ctl > span { display: flex; justify-content: space-between; }
+    .ctl output { color: var(--c-text-primary); font-variant-numeric: tabular-nums; }
+    .ctl.check { flex-direction: row; align-items: center; gap: 0.5em; cursor: pointer; }
+    .ctl.check small { color: var(--c-text-secondary); opacity: 0.75; }
+    .alx-range { width: 100%; accent-color: var(--c-highlight--primary); cursor: pointer; }
+    input[type="checkbox"] { accent-color: var(--c-highlight--primary); cursor: pointer; }
+
+    .draw-controls { display: flex; align-items: center; gap: 0.6em; }
+    .draw-controls .draw-spread { flex: 1; }
+    .draw-controls .ctl { gap: 0.15em; }
+    .alx-select {
+      background-color: var(--c-control-bg--500); color: var(--c-text-primary);
+      border: 1px solid var(--c-control-border); border-radius: 4px; height: 20px; cursor: pointer;
+    }
+
+    .share-row { display: flex; align-items: center; gap: 0.5em; }
+    .share-label { font-size: 0.95rem; color: var(--c-text-secondary); }
+    .share-row .alx-button { height: 20px; padding: 0 0.8em; }
+    .share-hint { font-size: 0.9rem; color: var(--c-highlight--primary); margin-left: auto; }
+    .share-panel { display: flex; gap: 0.5em; align-items: stretch; }
+    .alx-textarea {
+      flex: 1; resize: none; font-family: monospace; font-size: 0.82rem;
+      background-color: hsl(0, 0%, 12%); color: var(--c-text-primary);
+      border: 1px solid var(--c-control-border); border-radius: 4px; padding: 0.3em;
+    }
+    .share-actions { display: flex; flex-direction: column; gap: 0.3em; }
+    .share-actions .alx-button { height: 20px; padding: 0 0.6em; }
+
     .running {
       display: flex;
       align-items: center;
@@ -132,6 +162,49 @@
     </div>
     <canvas id="preview" width="312" height="150"></canvas>
     <p class="desc" id="desc"></p>
+    <div class="draw-controls" id="drawControls" hidden>
+      <button class="alx-button" id="clearPath">Clear</button>
+      <label class="ctl draw-spread">
+        <span>Spread</span>
+        <input class="alx-range" type="range" id="spread" min="0" max="1" step="0.02" />
+      </label>
+      <label class="ctl draw-loop">
+        <span>Loop</span>
+        <select id="loop" class="alx-select">
+          <option value="1">1 beat</option>
+          <option value="2">2 beats</option>
+          <option value="4">1 bar</option>
+          <option value="8">2 bars</option>
+        </select>
+      </label>
+    </div>
+    <div class="controls">
+      <label class="ctl">
+        <span>Width (time) <output id="widthVal">1×</output></span>
+        <input class="alx-range" type="range" id="width" min="0.25" max="3" step="0.05" />
+      </label>
+      <label class="ctl">
+        <span>Length (pitch) <output id="heightVal">1×</output></span>
+        <input class="alx-range" type="range" id="height" min="0.25" max="3" step="0.05" />
+      </label>
+      <label class="ctl check">
+        <input type="checkbox" id="snap" />
+        <span>Snap to key <small id="scaleName"></small></span>
+      </label>
+    </div>
+    <div class="share-row">
+      <span class="share-label">Share code</span>
+      <button class="alx-button" id="exportBtn">Export</button>
+      <button class="alx-button" id="importBtn">Import</button>
+      <span class="share-hint" id="shareHint"></span>
+    </div>
+    <div class="share-panel" id="sharePanel" hidden>
+      <textarea id="shareText" class="alx-textarea" rows="2" spellcheck="false"></textarea>
+      <div class="share-actions">
+        <button class="alx-button primary" id="shareDo">Copy</button>
+        <button class="alx-button" id="shareCancel">✕</button>
+      </div>
+    </div>
     <div class="nav">
       <button class="alx-button" id="prev">◀ Prev</button>
       <button class="alx-button" id="next">Next ▶</button>
@@ -140,7 +213,7 @@
       <button class="alx-button" id="close">Close</button>
       <button class="alx-button primary" id="apply">Apply</button>
     </div>
-    <p class="hint">Apply keeps this window open — keep flipping &amp; applying, then Close when done.</p>
+    <p class="hint">Apply re-opens this window so you can keep auditioning — Close when done. (Or right-click → <b>midiMove ▸</b> a mode to switch with no window.)</p>
     <div class="running" id="running" hidden>
       Running: <b id="runningName"></b>
       <button class="alx-button" id="stop">Stop</button>
@@ -149,10 +222,34 @@
 
   <script>
     // Injected by extension.ts (chooserUrl). Shape:
-    //   { modes: [{id,name,description}], physics: {...}, activeModeId: string|null }
+    //   { modes:[{id,name,description}], physics:{...}, activeModeId,
+    //     options:{width,height,snapToKey}, scale:{root,intervals},
+    //     path:[[dx,dy],…]|null, spread, periodBeats }
     const CONFIG = __MIDIMOVE_CONFIG__;
     const MODES = CONFIG.modes;
     const PH = CONFIG.physics;
+    const OPT = CONFIG.options || { width: 1, height: 1, snapToKey: false };
+    const SCALE = CONFIG.scale || { root: 0, intervals: [] };
+    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const DEFAULT_PERIOD = (PH.path && PH.path.periodBeats) || 4;
+
+    // Live, user-adjustable state (sliders + checkbox + draw pad).
+    let width = OPT.width, height = OPT.height, snap = OPT.snapToKey;
+    let drawnPath = Array.isArray(CONFIG.path) ? CONFIG.path.map((p) => [p[0], p[1]]) : [];
+    let spread = typeof CONFIG.spread === "number" ? CONFIG.spread : 0;
+    let period = (typeof CONFIG.periodBeats === "number" && CONFIG.periodBeats > 0) ? CONFIG.periodBeats : DEFAULT_PERIOD;
+
+    // Mirrors the engine's snapToScale: nearest pitch in the current scale.
+    function snapPitch(p) {
+      if (!snap || !SCALE.intervals.length) return p;
+      const r = Math.round(p);
+      const allowed = new Set(SCALE.intervals.map((iv) => (((iv + SCALE.root) % 12) + 12) % 12));
+      for (let dd = 0; dd <= 6; dd++) {
+        if (allowed.has((((r - dd) % 12) + 12) % 12)) return r - dd;
+        if (allowed.has((((r + dd) % 12) + 12) % 12)) return r + dd;
+      }
+      return r;
+    }
 
     // ----- host messaging (same protocol as the modal-dialog example) -------
     const isWebKit = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.live;
@@ -162,40 +259,28 @@
       else if (isWebView2) window.chrome.webview.postMessage(message);
     }
     function closeWith(action, modeId) {
-      doSendMessage({ method: "close_and_send", params: [JSON.stringify({ action, modeId })] });
+      doSendMessage({
+        method: "close_and_send",
+        params: [JSON.stringify({
+          action, modeId, width, height, snapToKey: snap,
+          path: drawnPath, spread, periodBeats: period,
+        })],
+      });
     }
 
     // ----- physics preview (mirrors the engine, fed by CONFIG.physics) ------
-    // Gravity derives a few cycle constants exactly as the engine does.
-    const Gp = PH.gravity;
-    const G_ACCEL = (2 * Gp.dropPitch) / (Gp.firstFallBeats * Gp.firstFallBeats);
-    const GRAV_ACTIVE = Gp.firstFallBeats * (1 + (2 * Gp.restitution) / (1 - Gp.restitution));
-    const GRAV_CYCLE = GRAV_ACTIVE + Gp.restBeats;
-    function bounceHeight(t) {
-      if (t >= GRAV_ACTIVE) return 0;
-      if (t <= Gp.firstFallBeats) return Math.max(0, Gp.dropPitch - 0.5 * G_ACCEL * t * t);
-      let v = G_ACCEL * Gp.firstFallBeats * Gp.restitution;
-      let rem = t - Gp.firstFallBeats;
-      for (let k = 0; k < 20; k++) {
-        const air = (2 * v) / G_ACCEL;
-        if (rem <= air) return Math.max(0, v * rem - 0.5 * G_ACCEL * rem * rem);
-        rem -= air; v *= Gp.restitution;
-        if (v < 1e-3) return 0;
-      }
-      return 0;
-    }
+
+    // Deterministic helpers — identical to the engine's, so the preview matches.
+    const smoothNoise = (seed, t) =>
+      (Math.sin(t * 1.1 + seed) + Math.sin(t * 1.7 + seed * 2.3 + 1.3) + Math.sin(t * 0.6 + seed * 3.7 + 2.9)) / 3;
+    const triWave = (u) => { const f = u - Math.floor(u); return f < 0.5 ? 4 * f - 1 : 3 - 4 * f; };
 
     // Returns { dx (beats), dy (semitones) } for preview note `i` of `n`.
-    function disp(id, i, n, restX, beats) {
+    function disp(id, i, n, restX, restY, beats) {
       if (id === "pendulum") {
         const p = PH.pendulum;
         const theta = p.theta0 * Math.cos(((2 * Math.PI) / p.periodBeats) * beats);
         return { dx: p.hAmp * Math.sin(theta), dy: p.vAmp * (1 - Math.cos(theta)) };
-      }
-      if (id === "spring") {
-        const p = PH.spring, t = beats % p.periodBeats;
-        const env = Math.exp(-p.damp * t), osc = Math.cos(2 * Math.PI * p.oscPerBeat * t);
-        return { dx: p.ampTime * env * osc, dy: p.ampPitch * env * osc };
       }
       if (id === "orbit") {
         const p = PH.orbit, ang = (2 * Math.PI * beats) / p.periodBeats, phase = (i / n) * 2 * Math.PI;
@@ -205,8 +290,32 @@
         const p = PH.wave, phase = 2 * Math.PI * (restX / BAR - beats / p.periodBeats);
         return { dx: 0, dy: p.ampPitch * Math.sin(phase) };
       }
-      if (id === "gravity") {
-        return { dx: 0, dy: bounceHeight(beats % GRAV_CYCLE) - Gp.dropPitch };
+      if (id === "drift") {
+        const p = PH.drift, t = beats * p.rate, seed = (i + 1) * 1.7;
+        return { dx: p.ampTime * smoothNoise(seed, t), dy: p.ampPitch * smoothNoise(seed + 100, t) };
+      }
+      if (id === "bounce") {
+        const p = PH.bounce;
+        return {
+          dx: p.ampTime * triWave(beats * p.vTime + i * 0.37),
+          dy: p.ampPitch * triWave(beats * p.vPitch + i * 0.61 + 0.25),
+        };
+      }
+      if (id === "cascade") {
+        const p = PH.cascade;
+        let d = (beats / p.sweepBeats - restX / BAR) % 1; if (d < 0) d += 1;
+        const env = Math.exp(-p.decay * d);
+        return {
+          dx: p.ampTime * env * Math.sin(2 * Math.PI * p.freq * d),
+          dy: p.ampPitch * env * Math.cos(2 * Math.PI * p.freq * d),
+        };
+      }
+      if (id === "pulse") {
+        const p = PH.pulse, s = 1 + p.amp * Math.sin((2 * Math.PI * beats) / p.periodBeats);
+        let cx = 0, cy = 0;
+        for (const r of REST) { cx += r.x; cy += r.y; }
+        cx /= REST.length; cy /= REST.length;
+        return { dx: (restX - cx) * (s - 1), dy: (restY - cy) * (s - 1) };
       }
       return { dx: 0, dy: 0 };
     }
@@ -266,18 +375,73 @@
       // animated notes
       cx.fillStyle = COL.note;
       REST.forEach((rest, i) => {
-        const d = disp(id, i, n, rest.x, beats);
-        const px = xToPx(clampNum(rest.x + d.dx, 0, BAR));
-        const py = yToPx(clampNum(rest.y + d.dy, PCENTER - PRANGE / 2, PCENTER + PRANGE / 2));
+        const d = disp(id, i, n, rest.x, rest.y, beats);
+        const px = xToPx(clampNum(rest.x + d.dx * width, 0, BAR));
+        const py = yToPx(clampNum(snapPitch(rest.y + d.dy * height), PCENTER - PRANGE / 2, PCENTER + PRANGE / 2));
         rr(px, py - NOTE_H / 2, NOTE_W, NOTE_H, 3);
         cx.fill();
       });
     }
 
+    // ----- draw pad (path mode) ---------------------------------------------
+    const padToPx = (nx, ny) => [W / 2 + nx * (W / 2 - PAD), H / 2 - ny * (H / 2 - PAD)];
+    const pxToNorm = (px, py) => [
+      clampNum((px - W / 2) / (W / 2 - PAD), -1, 1),
+      clampNum(-(py - H / 2) / (H / 2 - PAD), -1, 1),
+    ];
+
+    // Identical to the engine's samplePath (closed loop, wraparound lerp).
+    function samplePath(points, phase) {
+      const n = points.length;
+      if (n === 0) return [0, 0];
+      if (n === 1) return points[0];
+      const f = ((phase % 1) + 1) % 1;
+      const t = f * n, i = Math.floor(t) % n, j = (i + 1) % n, frac = t - Math.floor(t);
+      const a = points[i], b = points[j];
+      return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+    }
+
+    let drawing = false, rawStroke = [];
+    function drawPad(beats) {
+      cx.fillStyle = COL.panel; cx.fillRect(0, 0, W, H);
+      cx.strokeStyle = COL.grid; cx.lineWidth = 1;
+      cx.beginPath(); cx.moveTo(PAD * 0.5, H / 2 + 0.5); cx.lineTo(W - PAD * 0.5, H / 2 + 0.5); cx.stroke();
+      cx.beginPath(); cx.moveTo(W / 2 + 0.5, PAD * 0.5); cx.lineTo(W / 2 + 0.5, H - PAD * 0.5); cx.stroke();
+
+      if (drawing && rawStroke.length > 1) {
+        cx.strokeStyle = "hsla(31, 100%, 67%, 0.9)"; cx.lineWidth = 2; cx.beginPath();
+        rawStroke.forEach((p, k) => { const q = padToPx(p[0], p[1]); k === 0 ? cx.moveTo(q[0], q[1]) : cx.lineTo(q[0], q[1]); });
+        cx.stroke();
+      }
+      if (drawnPath.length < 2) {
+        if (!drawing) {
+          cx.fillStyle = COL.ghost; cx.textAlign = "center"; cx.font = "12px sans-serif";
+          cx.fillText("draw a loop here — time →, pitch ↑", W / 2, H / 2 - 6);
+        }
+        return;
+      }
+      cx.strokeStyle = "hsla(31, 100%, 67%, 0.5)"; cx.lineWidth = 1.5; cx.beginPath();
+      drawnPath.forEach((p, k) => { const q = padToPx(p[0], p[1]); k === 0 ? cx.moveTo(q[0], q[1]) : cx.lineTo(q[0], q[1]); });
+      cx.closePath(); cx.stroke();
+
+      const n = REST.length, phase = beats / period;
+      cx.fillStyle = COL.note;
+      for (let i = 0; i < n; i++) {
+        const s = samplePath(drawnPath, phase + spread * (i / n));
+        const q = padToPx(s[0], s[1]);
+        cx.beginPath(); cx.arc(q[0], q[1], 4, 0, 2 * Math.PI); cx.fill();
+      }
+    }
+
+    function paint(beats) {
+      if (MODES[index].id === "path") drawPad(beats);
+      else draw(beats);
+    }
+
     let t0 = null;
     function frame(now) {
       if (t0 === null) t0 = now;
-      draw(((now - t0) / 1000) * PREVIEW_BPS);
+      paint(((now - t0) / 1000) * PREVIEW_BPS);
       requestAnimationFrame(frame);
     }
 
@@ -292,6 +456,9 @@
       document.getElementById("name").textContent = m.name;
       document.getElementById("count").textContent = (index + 1) + " / " + MODES.length;
       document.getElementById("desc").textContent = m.description;
+      const isDraw = m.id === "path";
+      document.getElementById("drawControls").hidden = !isDraw;
+      cv.style.cursor = isDraw ? "crosshair" : "default";
     }
     function step(delta) {
       index = (index + delta + MODES.length) % MODES.length;
@@ -303,6 +470,133 @@
     document.getElementById("apply").onclick = () => closeWith("apply", MODES[index].id);
     document.getElementById("close").onclick = () => closeWith("close", null);
     document.getElementById("stop").onclick = () => closeWith("stop", null);
+
+    // ----- amplitude sliders + snap-to-key toggle ---------------------------
+    const widthEl = document.getElementById("width");
+    const heightEl = document.getElementById("height");
+    const snapEl = document.getElementById("snap");
+    const widthVal = document.getElementById("widthVal");
+    const heightVal = document.getElementById("heightVal");
+    const fmt = (v) => (Math.round(v * 100) / 100) + "×";
+    function syncLabels() { widthVal.textContent = fmt(width); heightVal.textContent = fmt(height); }
+    widthEl.value = width; heightEl.value = height; snapEl.checked = snap;
+    widthEl.oninput = () => { width = parseFloat(widthEl.value); syncLabels(); };
+    heightEl.oninput = () => { height = parseFloat(heightEl.value); syncLabels(); };
+    snapEl.onchange = () => { snap = snapEl.checked; };
+    syncLabels();
+    document.getElementById("scaleName").textContent =
+      SCALE.intervals && SCALE.intervals.length
+        ? "(" + NOTE_NAMES[(((SCALE.root % 12) + 12) % 12)] + ")"
+        : "(scale off)";
+
+    // ----- draw pad: pointer drawing + controls -----------------------------
+    const spreadEl = document.getElementById("spread");
+    const loopEl = document.getElementById("loop");
+    spreadEl.value = spread;
+    loopEl.value = String(period);
+    spreadEl.oninput = () => { spread = parseFloat(spreadEl.value); };
+    loopEl.onchange = () => { period = parseFloat(loopEl.value) || DEFAULT_PERIOD; };
+    document.getElementById("clearPath").onclick = () => { drawnPath = []; };
+
+    // Resample a freehand stroke into N points evenly spaced around the CLOSED
+    // loop (closing segment included), so the path loops smoothly.
+    function resampleClosed(raw, N) {
+      const pts = [];
+      for (const p of raw) { const l = pts[pts.length - 1]; if (!l || l[0] !== p[0] || l[1] !== p[1]) pts.push(p); }
+      if (pts.length < 2) return [];
+      const seg = []; let total = 0;
+      for (let k = 0; k < pts.length; k++) {
+        const a = pts[k], b = pts[(k + 1) % pts.length];
+        const d = Math.hypot(b[0] - a[0], b[1] - a[1]); seg.push(d); total += d;
+      }
+      if (total < 1e-6) return [];
+      const out = []; let k = 0, acc = 0;
+      for (let s = 0; s < N; s++) {
+        const target = (s / N) * total;
+        while (k < pts.length - 1 && acc + seg[k] < target) { acc += seg[k]; k++; }
+        const a = pts[k], b = pts[(k + 1) % pts.length], segLen = seg[k] || 1e-6;
+        const f = (target - acc) / segLen;
+        out.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+      }
+      return out;
+    }
+
+    function padPoint(e) {
+      const rect = cv.getBoundingClientRect();
+      return pxToNorm((e.clientX - rect.left) * (W / rect.width), (e.clientY - rect.top) * (H / rect.height));
+    }
+    cv.addEventListener("pointerdown", (e) => {
+      if (MODES[index].id !== "path") return;
+      drawing = true; rawStroke = [padPoint(e)];
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* not all webviews */ }
+      e.preventDefault();
+    });
+    cv.addEventListener("pointermove", (e) => { if (drawing) rawStroke.push(padPoint(e)); });
+    cv.addEventListener("pointerup", () => {
+      if (!drawing) return; drawing = false;
+      if (rawStroke.length >= 2) { const rs = resampleClosed(rawStroke, 48); if (rs.length >= 2) drawnPath = rs; }
+    });
+
+    // ----- share codes (export / import) ------------------------------------
+    const b64e = (str) => btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const b64d = (s) => { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return decodeURIComponent(escape(atob(s))); };
+    function currentShareObj() {
+      const m = MODES[index].id;
+      const o = { v: 1, m, w: Math.round(width * 100), h: Math.round(height * 100), k: snap ? 1 : 0, b: period };
+      if (m === "path" && drawnPath.length >= 2) {
+        o.s = Math.round(spread * 100);
+        o.p = drawnPath.map((pt) => [Math.round(pt[0] * 127), Math.round(pt[1] * 127)]);
+      }
+      return o;
+    }
+    function applyShareObj(o) {
+      const k = MODES.findIndex((m) => m.id === o.m);
+      if (k >= 0) index = k;
+      if (typeof o.w === "number") width = clampNum(o.w / 100, 0.25, 3);
+      if (typeof o.h === "number") height = clampNum(o.h / 100, 0.25, 3);
+      snap = !!o.k;
+      if (typeof o.b === "number" && o.b > 0) period = o.b;
+      if (o.m === "path" && Array.isArray(o.p)) {
+        drawnPath = o.p.map((pt) => [clampNum(pt[0] / 127, -1, 1), clampNum(pt[1] / 127, -1, 1)]);
+        spread = typeof o.s === "number" ? clampNum(o.s / 100, 0, 1) : 0;
+      }
+      widthEl.value = width; heightEl.value = height; snapEl.checked = snap;
+      spreadEl.value = spread; loopEl.value = String(period);
+      syncLabels(); render();
+    }
+
+    const sharePanel = document.getElementById("sharePanel");
+    const shareText = document.getElementById("shareText");
+    const shareDo = document.getElementById("shareDo");
+    const shareHint = document.getElementById("shareHint");
+    let shareMode = null;
+    function openShare(mode) {
+      shareMode = mode; sharePanel.hidden = false; shareHint.textContent = "";
+      if (mode === "export") {
+        shareText.readOnly = true; shareText.value = "mm1:" + b64e(JSON.stringify(currentShareObj()));
+        shareDo.textContent = "Copy"; shareText.focus(); shareText.select();
+      } else {
+        shareText.readOnly = false; shareText.value = ""; shareText.placeholder = "Paste a midiMove code (mm1:…)";
+        shareDo.textContent = "Load"; shareText.focus();
+      }
+    }
+    document.getElementById("exportBtn").onclick = () => openShare("export");
+    document.getElementById("importBtn").onclick = () => openShare("import");
+    document.getElementById("shareCancel").onclick = () => { sharePanel.hidden = true; };
+    shareDo.onclick = () => {
+      if (shareMode === "export") {
+        shareText.select();
+        try { document.execCommand("copy"); shareHint.textContent = "Copied!"; }
+        catch (e) { shareHint.textContent = "Press Ctrl+C"; }
+      } else {
+        try {
+          let code = shareText.value.trim();
+          if (code.indexOf("mm1:") === 0) code = code.slice(4);
+          applyShareObj(JSON.parse(b64d(code)));
+          sharePanel.hidden = true;
+        } catch (e) { shareHint.textContent = "Invalid code"; }
+      }
+    };
 
     if (CONFIG.activeModeId) {
       const am = MODES.find((m) => m.id === CONFIG.activeModeId);
