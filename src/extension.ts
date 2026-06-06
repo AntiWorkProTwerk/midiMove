@@ -43,8 +43,20 @@ type SimulationFn = (
 ) => NoteDescription[];
 
 // User-tunable options carried with each running animation.
-type AnimOptions = { width: number; height: number; snapToKey: boolean };
-const DEFAULT_OPTIONS: AnimOptions = { width: 1, height: 1, snapToKey: false };
+type AnimOptions = {
+  width: number;
+  height: number;
+  snapToKey: boolean;
+  // Live applies at most ~8 clip edits/s while the timeline plays, so perceived
+  // smoothness comes from moving LESS per frame: lower speed = smaller steps.
+  speed: number;
+};
+const DEFAULT_OPTIONS: AnimOptions = {
+  width: 1,
+  height: 1,
+  snapToKey: false,
+  speed: 1,
+};
 
 // The full description of an animation — the unit the engine, the chooser
 // window, and the shareable code all speak. `path` is present only for "path".
@@ -376,11 +388,12 @@ const modeById = (id: string): Mode | undefined =>
 // ---------------------------------------------------------------------------
 // Animation engine
 // ---------------------------------------------------------------------------
-// ~8 fps. Measured on a playing timeline: Live accepts note-writes instantly
-// (fire-and-forget, <1 ms) but applies/redraws them on its busy main thread —
-// above ~8 writes/s the edits outpace Live and the visual lag GROWS over time.
-// 125 ms is the highest rate that stays stable while music plays.
-const FRAME_MS = 125;
+// ~10 fps. Measured on a playing timeline: Live accepts note-writes instantly
+// (fire-and-forget, <1 ms) but applies/redraws them on its busy main thread.
+// At ~15 writes/s the edits outpace Live and the visual lag GROWS over time;
+// ~8 writes/s was fully stable but chunky. 100 ms splits the difference —
+// if lag creeps back during long playback, raise this toward 125.
+const FRAME_MS = 100;
 const MAX_INTERVAL_MS = 250; // worst-case backoff (~4 fps) when Live is congested
 const MAX_RUN_SECONDS = 300; // safety cap so a forgotten animation can't run forever
 const DEBUG_STATS: boolean = false; // log frame-loop stats every 10 s to the host console
@@ -520,7 +533,7 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
       : (pitch: number) => pitch;
 
     try {
-      const notes = anim.sim(anim.rest, elapsed, {
+      const ctx: SimContext = {
         barLen: anim.barLen,
         tempo: getTempo(),
         width: o.width,
@@ -529,7 +542,10 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
         periodBeats: s.periodBeats > 0 ? s.periodBeats : anim.barLen,
         spread: s.path ? s.path.spread : 0,
         path: s.path ? s.path.points : null,
-      });
+      };
+      // `speed` scales the animation clock: at the fixed ~8 fps apply rate,
+      // slower motion = smaller per-frame jumps = visibly smoother.
+      const notes = anim.sim(anim.rest, elapsed * o.speed, ctx);
       const key = noteSignature(notes);
       if (key !== anim.lastKey) {
         anim.clip.notes = notes; // only write when the frame actually changed
@@ -624,6 +640,7 @@ type ChooserChoice = {
   width?: number;
   height?: number;
   snapToKey?: boolean;
+  speed?: number;
   path?: number[][];
   spread?: number;
   periodBeats?: number;
@@ -634,6 +651,10 @@ const optionsFromChoice = (c: ChooserChoice): AnimOptions => ({
   width: typeof c.width === "number" ? clamp(c.width, 0.1, 4) : 1,
   height: typeof c.height === "number" ? clamp(c.height, 0.1, 4) : 1,
   snapToKey: c.snapToKey === true,
+  speed:
+    typeof c.speed === "number"
+      ? clamp(c.speed, 0.1, 2)
+      : DEFAULT_OPTIONS.speed,
 });
 
 // Build a full AnimationSpec from a posted "apply" choice.
@@ -695,7 +716,7 @@ export function activate(activation: ActivationContext) {
           result = await ctx.ui.showModalDialog(
             chooserUrl(running ? running.spec : null),
             360,
-            510, // as short as the layout allows — the dialog is always screen-
+            500, // as short as the layout allows — the dialog is always screen-
             // centered (no position API), so less height = higher bottom edge
             // = less of the clip editor covered.
           );
