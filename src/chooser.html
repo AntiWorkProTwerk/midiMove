@@ -46,23 +46,25 @@
     body {
       height: 100%;
       display: flex;
-      padding: 0.9em;
+      padding: 1.1em;
     }
 
     .card {
       display: flex;
       flex-direction: column;
-      gap: 0.55em;
+      gap: 0.75em;
       width: 100%;
     }
 
     .head {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
     }
     .title { font-size: 1.55rem; color: var(--c-text-primary); }
-    .count { font-size: 1rem; color: var(--c-text-secondary); font-variant-numeric: tabular-nums; }
+    .head-nav { display: flex; align-items: center; gap: 0.45em; }
+    .count { font-size: 1rem; color: var(--c-text-secondary); font-variant-numeric: tabular-nums; margin-right: 0.35em; }
+    .nav-btn { width: 30px; padding: 0; text-align: center; }
 
     #preview {
       width: 100%;
@@ -101,20 +103,22 @@
     .alx-button.primary:hover { filter: brightness(1.08); }
     .alx-button:focus-visible { outline: 2px solid var(--c-control-outline); }
 
-    .nav { display: flex; gap: 0.5em; }
-    .nav .alx-button { flex: 1; }
-
-    .actions { display: flex; gap: 0.5em; justify-content: flex-end; }
+    .actions { display: flex; gap: 0.6em; }
     .actions .primary { flex: 1; }
 
-    .controls { display: flex; flex-wrap: wrap; gap: 0.35em 0.8em; }
+    .controls { display: flex; flex-wrap: wrap; gap: 0.7em 1.2em; }
     .controls .ctl { flex: 1 1 40%; }
-    .controls .ctl.check { flex: 1 1 100%; }
-    .ctl { display: flex; flex-direction: column; gap: 0.2em; font-size: 0.95rem; color: var(--c-text-secondary); }
+    .controls .ctl.check { flex: 1 1 40%; align-self: end; padding-bottom: 0.2em; }
+    .ctl { display: flex; flex-direction: column; gap: 0.3em; font-size: 0.95rem; color: var(--c-text-secondary); }
     .ctl > span { display: flex; justify-content: space-between; }
     .ctl output { color: var(--c-text-primary); font-variant-numeric: tabular-nums; }
     .ctl.check { flex-direction: row; align-items: center; gap: 0.5em; cursor: pointer; }
-    .ctl.check small { color: var(--c-text-secondary); opacity: 0.75; }
+    .ctl.check small { color: var(--c-text-secondary); opacity: 0.75; margin-left: 0.3em; }
+
+    /* Everything from the share row down is pinned to the bottom of the card,
+       so spare height sits between the controls and the action bar instead of
+       dangling as dead space below the buttons. */
+    .share-row { margin-top: auto; }
     .alx-range { width: 100%; accent-color: var(--c-highlight--primary); cursor: pointer; }
     input[type="checkbox"] { accent-color: var(--c-highlight--primary); cursor: pointer; }
 
@@ -158,7 +162,11 @@
   <div class="card">
     <div class="head">
       <div class="title" id="name">—</div>
-      <div class="count" id="count">—</div>
+      <div class="head-nav">
+        <span class="count" id="count">—</span>
+        <button class="alx-button nav-btn" id="prev" title="Previous mode">◀</button>
+        <button class="alx-button nav-btn" id="next" title="Next mode">▶</button>
+      </div>
     </div>
     <canvas id="preview" width="312" height="120"></canvas>
     <p class="desc" id="desc"></p>
@@ -187,6 +195,10 @@
         <span>Length (pitch) <output id="heightVal">1×</output></span>
         <input class="alx-range" type="range" id="height" min="0.25" max="3" step="0.05" />
       </label>
+      <label class="ctl">
+        <span>Speed <output id="speedVal">1×</output></span>
+        <input class="alx-range" type="range" id="speed" min="0.1" max="2" step="0.05" />
+      </label>
       <label class="ctl check">
         <input type="checkbox" id="snap" />
         <span>Snap to key <small id="scaleName"></small></span>
@@ -204,10 +216,6 @@
         <button class="alx-button primary" id="shareDo">Copy</button>
         <button class="alx-button" id="shareCancel">✕</button>
       </div>
-    </div>
-    <div class="nav">
-      <button class="alx-button" id="prev">◀ Prev</button>
-      <button class="alx-button" id="next">Next ▶</button>
     </div>
     <div class="actions">
       <button class="alx-button" id="close">Close</button>
@@ -234,6 +242,7 @@
 
     // Live, user-adjustable state (sliders + checkbox + draw pad).
     let width = OPT.width, height = OPT.height, snap = OPT.snapToKey;
+    let speed = typeof OPT.speed === "number" ? OPT.speed : 1;
     let drawnPath = Array.isArray(CONFIG.path) ? CONFIG.path.map((p) => [p[0], p[1]]) : [];
     let spread = typeof CONFIG.spread === "number" ? CONFIG.spread : 0;
     let period = (typeof CONFIG.periodBeats === "number" && CONFIG.periodBeats > 0) ? CONFIG.periodBeats : DEFAULT_PERIOD;
@@ -261,7 +270,7 @@
       doSendMessage({
         method: "close_and_send",
         params: [JSON.stringify({
-          action, modeId, width, height, snapToKey: snap,
+          action, modeId, width, height, snapToKey: snap, speed,
           path: drawnPath, spread, periodBeats: period,
         })],
       });
@@ -440,7 +449,7 @@
     let t0 = null;
     function frame(now) {
       if (t0 === null) t0 = now;
-      paint(((now - t0) / 1000) * PREVIEW_BPS);
+      paint(((now - t0) / 1000) * PREVIEW_BPS * speed);
       requestAnimationFrame(frame);
     }
 
@@ -473,14 +482,22 @@
     // ----- amplitude sliders + snap-to-key toggle ---------------------------
     const widthEl = document.getElementById("width");
     const heightEl = document.getElementById("height");
+    const speedEl = document.getElementById("speed");
     const snapEl = document.getElementById("snap");
     const widthVal = document.getElementById("widthVal");
     const heightVal = document.getElementById("heightVal");
+    const speedVal = document.getElementById("speedVal");
     const fmt = (v) => (Math.round(v * 100) / 100) + "×";
-    function syncLabels() { widthVal.textContent = fmt(width); heightVal.textContent = fmt(height); }
-    widthEl.value = width; heightEl.value = height; snapEl.checked = snap;
+    function syncLabels() {
+      widthVal.textContent = fmt(width);
+      heightVal.textContent = fmt(height);
+      speedVal.textContent = fmt(speed);
+    }
+    widthEl.value = width; heightEl.value = height; speedEl.value = speed;
+    snapEl.checked = snap;
     widthEl.oninput = () => { width = parseFloat(widthEl.value); syncLabels(); };
     heightEl.oninput = () => { height = parseFloat(heightEl.value); syncLabels(); };
+    speedEl.oninput = () => { speed = parseFloat(speedEl.value); syncLabels(); };
     snapEl.onchange = () => { snap = snapEl.checked; };
     syncLabels();
     document.getElementById("scaleName").textContent =
@@ -541,7 +558,7 @@
     const b64d = (s) => { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return decodeURIComponent(escape(atob(s))); };
     function currentShareObj() {
       const m = MODES[index].id;
-      const o = { v: 1, m, w: Math.round(width * 100), h: Math.round(height * 100), k: snap ? 1 : 0, b: period };
+      const o = { v: 1, m, w: Math.round(width * 100), h: Math.round(height * 100), k: snap ? 1 : 0, b: period, sp: Math.round(speed * 100) };
       if (m === "path" && drawnPath.length >= 2) {
         o.s = Math.round(spread * 100);
         o.p = drawnPath.map((pt) => [Math.round(pt[0] * 127), Math.round(pt[1] * 127)]);
@@ -554,12 +571,14 @@
       if (typeof o.w === "number") width = clampNum(o.w / 100, 0.25, 3);
       if (typeof o.h === "number") height = clampNum(o.h / 100, 0.25, 3);
       snap = !!o.k;
+      if (typeof o.sp === "number") speed = clampNum(o.sp / 100, 0.1, 2);
       if (typeof o.b === "number" && o.b > 0) period = o.b;
       if (o.m === "path" && Array.isArray(o.p)) {
         drawnPath = o.p.map((pt) => [clampNum(pt[0] / 127, -1, 1), clampNum(pt[1] / 127, -1, 1)]);
         spread = typeof o.s === "number" ? clampNum(o.s / 100, 0, 1) : 0;
       }
-      widthEl.value = width; heightEl.value = height; snapEl.checked = snap;
+      widthEl.value = width; heightEl.value = height; speedEl.value = speed;
+      snapEl.checked = snap;
       spreadEl.value = spread; loopEl.value = String(period);
       syncLabels(); render();
     }
