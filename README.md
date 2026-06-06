@@ -4,7 +4,7 @@ Animates a MIDI clip's notes in real time — swing, orbit, ripple, drift, bounc
 
 ## Download
 
-[Download midiMove-1.0.0.ablx](https://github.com/AntiWorkProTwerk/midiMove/releases/latest/download/midiMove-1.0.0.ablx)
+[Download midiMove-1.0.1.ablx](https://github.com/AntiWorkProTwerk/midiMove/releases/latest/download/midiMove-1.0.1.ablx)
 
 ## Use
 
@@ -29,5 +29,5 @@ Eight modes — Pendulum, Orbit, Wave, Drift, Bounce, Cascade, Pulse and a freeh
 
 ```bash
 npm install
-npm run package   # → midiMove-1.0.0.ablx
+npm run package   # → midiMove-1.0.1.ablx
 ```
