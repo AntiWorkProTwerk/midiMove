@@ -69,9 +69,13 @@ const place = (
 ): NoteDescription => {
   const hi = Math.max(0, ctx.barLen - rest.duration);
   const pitch = ctx.snap(Math.round(rest.pitch + dy * ctx.height));
+  // Quantize to a 1/192-beat grid — invisible at any zoom, but it makes
+  // consecutive low-motion frames byte-identical so the identical-frame skip
+  // in the engine loop can actually suppress redundant writes.
+  const startTime = Math.round((rest.startTime + dx * ctx.width) * 192) / 192;
   return {
     ...rest, // preserve velocity / muted / probability / etc.
-    startTime: clamp(rest.startTime + dx * ctx.width, 0, hi),
+    startTime: clamp(startTime, 0, hi),
     pitch: clamp(pitch, 0, 127),
   };
 };
@@ -372,8 +376,14 @@ const modeById = (id: string): Mode | undefined =>
 // ---------------------------------------------------------------------------
 // Animation engine
 // ---------------------------------------------------------------------------
-const FRAME_MS = 66; // ~15 fps target; the loop self-paces and drops frames
+// ~8 fps. Measured on a playing timeline: Live accepts note-writes instantly
+// (fire-and-forget, <1 ms) but applies/redraws them on its busy main thread —
+// above ~8 writes/s the edits outpace Live and the visual lag GROWS over time.
+// 125 ms is the highest rate that stays stable while music plays.
+const FRAME_MS = 125;
+const MAX_INTERVAL_MS = 250; // worst-case backoff (~4 fps) when Live is congested
 const MAX_RUN_SECONDS = 300; // safety cap so a forgotten animation can't run forever
+const DEBUG_STATS: boolean = false; // log frame-loop stats every 10 s to the host console
 
 type Animation = {
   clip: MidiClipV;
@@ -384,6 +394,9 @@ type Animation = {
   spec: AnimationSpec; // mode + options + period + optional drawn path
   barLen: number;
   lastKey: string; // signature of the last-written frame (skip identical writes)
+  interval: number; // adaptive ms between frames (FRAME_MS … MAX_INTERVAL_MS)
+  simClockMs: number; // clamped animation clock — advances ≤ 2×interval per tick
+  lastTickAt: number;
 };
 
 // A compact signature of a frame's notes. Identical frames are not re-written,
@@ -472,20 +485,32 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
 
   const startedAt = Date.now();
   let anim: Animation;
-  let nextAt = startedAt + FRAME_MS;
 
-  // Self-pacing frame loop. We use a recursive setTimeout rather than
-  // setInterval so a slow frame never lets writes pile up and apply in a burst
-  // (the choppiness symptom while Live is busy playing). We pace by wall-clock
-  // and DROP frames when behind instead of firing catch-up writes.
+  // Temporary instrumentation — one summary line every ~10 s to the host log.
+  let stWrites = 0;
+  let stSkips = 0;
+  let stCostSum = 0;
+  let stCostMax = 0;
+  let stLastLog = startedAt;
+
+  // Frame loop, scheduled FROM COMPLETION: the next tick is queued only after
+  // this frame's (possibly blocking) clip write returns, so the gap between
+  // write-end and the next write-start is always ≥ `interval` — Live is never
+  // flooded with queued note-sets, no matter how slow it is during playback.
   const tick = (): void => {
     if (active.get(clip) !== anim) return; // stopped or replaced
-    const nowMs = Date.now();
-    const elapsed = (nowMs - anim.startedAt) / 1000;
-    if (elapsed >= MAX_RUN_SECONDS) {
+    const tickStart = Date.now();
+    if ((tickStart - anim.startedAt) / 1000 >= MAX_RUN_SECONDS) {
       stopAnimation(clip, true);
       return;
     }
+
+    // Clamped animation clock: a stalled frame advances the motion by at most
+    // two intervals, so congestion slows the animation smoothly instead of
+    // teleporting the notes to wherever wall-clock says they should be.
+    anim.simClockMs += Math.min(tickStart - anim.lastTickAt, 2 * anim.interval);
+    anim.lastTickAt = tickStart;
+    const elapsed = anim.simClockMs / 1000;
 
     const s = anim.spec;
     const o = s.options;
@@ -509,6 +534,9 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
       if (key !== anim.lastKey) {
         anim.clip.notes = notes; // only write when the frame actually changed
         anim.lastKey = key;
+        stWrites++;
+      } else {
+        stSkips++;
       }
     } catch (err) {
       // Clip/track was probably deleted mid-animation — stop without trying to
@@ -518,9 +546,31 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
       return;
     }
 
-    nextAt += FRAME_MS;
-    if (nextAt < nowMs) nextAt = nowMs + FRAME_MS; // fell behind → resync, no burst
-    anim.timer = setTimeout(tick, Math.max(0, nextAt - Date.now()));
+    // Adaptive throttle: ease the interval toward 2× the measured frame cost.
+    // When Live applies writes instantly this sits at FRAME_MS (~15 fps); when
+    // Live is busy playing, the loop backs off so every write lands cleanly.
+    const cost = Date.now() - tickStart;
+    stCostSum += cost;
+    if (cost > stCostMax) stCostMax = cost;
+    const target = clamp(2 * cost, FRAME_MS, MAX_INTERVAL_MS);
+    anim.interval += (target - anim.interval) * 0.3;
+
+    if (DEBUG_STATS) {
+      const nowEnd = Date.now();
+      if (nowEnd - stLastLog >= 10_000) {
+        const secs = (nowEnd - stLastLog) / 1000;
+        const frames = stWrites + stSkips;
+        console.log(
+          `midiMove stats: ${(stWrites / secs).toFixed(1)} writes/s, ` +
+            `${stSkips}/${frames} skipped, cost avg ${(stCostSum / Math.max(1, frames)).toFixed(1)}ms ` +
+            `max ${stCostMax}ms, interval ${anim.interval.toFixed(0)}ms`,
+        );
+        stWrites = stSkips = stCostSum = stCostMax = 0;
+        stLastLog = nowEnd;
+      }
+    }
+
+    anim.timer = setTimeout(tick, anim.interval);
   };
 
   anim = {
@@ -532,6 +582,9 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
     spec,
     barLen,
     lastKey: "",
+    interval: FRAME_MS,
+    simClockMs: 0,
+    lastTickAt: startedAt,
   };
   active.set(clip, anim);
 }
@@ -642,7 +695,9 @@ export function activate(activation: ActivationContext) {
           result = await ctx.ui.showModalDialog(
             chooserUrl(running ? running.spec : null),
             360,
-            650,
+            510, // as short as the layout allows — the dialog is always screen-
+            // centered (no position API), so less height = higher bottom edge
+            // = less of the clip editor covered.
           );
         } catch (err) {
           console.warn("midiMove: chooser dialog failed", err);
