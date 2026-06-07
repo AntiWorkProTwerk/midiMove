@@ -1,3 +1,10 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+// The bundle is CJS (see build.ts), so __dirname exists at runtime even though
+// the TS source is typed as ESM.
+declare const __dirname: string;
+
 import {
   initialize,
   MidiClip,
@@ -410,6 +417,9 @@ type Animation = {
   interval: number; // adaptive ms between frames (FRAME_MS … MAX_INTERVAL_MS)
   simClockMs: number; // clamped animation clock — advances ≤ 2×interval per tick
   lastTickAt: number;
+  paused: boolean; // frozen mid-motion (notes stay put; Stop restores instead)
+  pausedAt: number;
+  arm: () => void; // (re)schedule the next tick — used by resume
 };
 
 // A compact signature of a frame's notes. Identical frames are not re-written,
@@ -428,6 +438,34 @@ let getScale: () => { root: number; intervals: number[] } = () => ({
   root: 0,
   intervals: [],
 });
+
+// Per-mode preset lists, edited entirely inside the chooser window (its only
+// host channel closes the dialog, so saves stay local there for zero blinking)
+// and posted back with every action. Persisted to storageDirectory when Live
+// provides one (installed extensions); otherwise they live for the host session.
+let presetStore: Record<string, unknown> = {};
+let presetIdxStore: Record<string, unknown> = {}; // selected preset per mode
+let customModes: unknown[] = []; // user-named "preset modes" shown in the carousel
+let presetsFile: string | null = null;
+
+function persistUserData(): void {
+  if (!presetsFile) return;
+  try {
+    fs.writeFile(
+      presetsFile,
+      JSON.stringify({
+        presets: presetStore,
+        idx: presetIdxStore,
+        custom: customModes,
+      }),
+      (err) => {
+        if (err) console.warn("midiMove: failed to save presets", err);
+      },
+    );
+  } catch (err) {
+    console.warn("midiMove: failed to save presets", err);
+  }
+}
 
 // The most recently applied settings, so the instant menu items and a reopened
 // chooser inherit the last Width / Length / Snap (and drawn path) the user chose.
@@ -463,17 +501,59 @@ const seedNotes = (barLen: number): NoteDescription[] => {
   }));
 };
 
+// Per-clip stack of previously applied specs. Live's own Ctrl+Z is useless here
+// (every animation frame is an undoable edit and the SDK can't suppress that),
+// so midiMove keeps its own apply-level history: Undo steps back through the
+// applied animations and finally restores the original notes.
+const history = new Map<MidiClipV, AnimationSpec[]>();
+
 function stopAnimation(clip: MidiClipV, restore: boolean): void {
   const anim = active.get(clip);
   if (!anim) return; // nothing running for this clip
   clearTimeout(anim.timer);
   active.delete(clip);
+  history.delete(clip); // stop = back to baseline; the apply chain resets
   if (restore) {
     try {
       anim.clip.notes = anim.rest; // final write returns the grid to rest
     } catch (err) {
       console.warn("midiMove: failed to restore notes on stop", err);
     }
+  }
+}
+
+// Apply with history: remembers the spec that was running so Undo can return
+// to it. Use this (not startAnimation) for every user-initiated apply.
+function applyAnimation(clip: MidiClipV, spec: AnimationSpec): void {
+  const running = active.get(clip);
+  if (running && JSON.stringify(running.spec) !== JSON.stringify(spec)) {
+    const stack = history.get(clip) ?? [];
+    stack.push(running.spec);
+    if (stack.length > 20) stack.shift();
+    history.set(clip, stack);
+  }
+  startAnimation(clip, spec);
+}
+
+function undoAnimation(clip: MidiClipV): void {
+  const prev = history.get(clip)?.pop();
+  if (prev) startAnimation(clip, prev);
+  else stopAnimation(clip, true); // nothing earlier → restore the original notes
+}
+
+// Freeze the animation in place (the notes stay at their current animated
+// positions); toggling again resumes from the exact same phase.
+function togglePause(clip: MidiClipV): void {
+  const anim = active.get(clip);
+  if (!anim) return;
+  if (anim.paused) {
+    anim.paused = false;
+    anim.startedAt += Date.now() - anim.pausedAt; // pause doesn't eat the run cap
+    anim.arm();
+  } else {
+    clearTimeout(anim.timer);
+    anim.paused = true;
+    anim.pausedAt = Date.now();
   }
 }
 
@@ -512,6 +592,7 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
   // flooded with queued note-sets, no matter how slow it is during playback.
   const tick = (): void => {
     if (active.get(clip) !== anim) return; // stopped or replaced
+    if (anim.paused) return; // frozen — resume re-arms via anim.arm()
     const tickStart = Date.now();
     if ((tickStart - anim.startedAt) / 1000 >= MAX_RUN_SECONDS) {
       stopAnimation(clip, true);
@@ -601,6 +682,12 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
     interval: FRAME_MS,
     simClockMs: 0,
     lastTickAt: startedAt,
+    paused: false,
+    pausedAt: 0,
+    arm: () => {
+      anim.lastTickAt = Date.now(); // no clock jump after a long pause
+      anim.timer = setTimeout(tick, anim.interval);
+    },
   };
   active.set(clip, anim);
 }
@@ -613,7 +700,19 @@ function startAnimation(clip: MidiClipV, spec: AnimationSpec): void {
 // driven by the same numbers as the engine. The window posts back a JSON
 // `{ action, modeId }` via showModalDialog's close_and_send protocol.
 // ---------------------------------------------------------------------------
-const chooserUrl = (spec: AnimationSpec | null): string => {
+// Real clip state injected into the window so the preview mirrors the actual
+// MIDI: the clip's notes (start, pitch, duration), bar length, the live project
+// tempo, and — when an animation is running — its exact clock, so the preview
+// plays in phase with the clip.
+type PreviewView = {
+  tempo: number;
+  barLen: number;
+  clockMs: number;
+  paused: boolean;
+  rest: [number, number, number][];
+} | null;
+
+const chooserUrl = (spec: AnimationSpec | null, view: PreviewView): string => {
   const options = spec ? spec.options : lastOptions;
   const draw = (spec && spec.path) || lastPath; // restore the last/running path
   const config = {
@@ -625,6 +724,10 @@ const chooserUrl = (spec: AnimationSpec | null): string => {
     path: draw ? draw.points : null, // restore the draw pad
     spread: draw ? draw.spread : 0,
     periodBeats: spec && spec.periodBeats > 0 ? spec.periodBeats : lastPeriodBeats,
+    view,
+    presets: presetStore, // per-mode preset lists for the ◀ n/N ▶ flipper
+    presetIdx: presetIdxStore, // remembered pager position per mode
+    customModes, // user-named preset modes, appended to the carousel
   };
   // Use a replacer function so `$` in the JSON isn't treated as a special
   // replacement pattern.
@@ -644,6 +747,9 @@ type ChooserChoice = {
   path?: number[][];
   spread?: number;
   periodBeats?: number;
+  presets?: Record<string, unknown>;
+  presetIdx?: Record<string, unknown>;
+  customModes?: unknown[];
 };
 
 // Read the window's slider/toggle values into validated options.
@@ -690,6 +796,30 @@ export function activate(activation: ActivationContext) {
     intervals: ctx.application.song.scaleIntervals,
   });
 
+  // Persist presets/custom modes to Live's storage directory when provided
+  // (installed extensions). In dev runs it's undefined, so fall back to a
+  // presets.json next to the extension — otherwise every host restart (which
+  // dev does constantly) silently wipes everything the user saved.
+  const storageDir = ctx.environment.storageDirectory;
+  const presetsDir = storageDir || path.resolve(__dirname, "..");
+  presetsFile = path.join(presetsDir, "presets.json");
+  console.log(`midiMove: presets persisted at ${presetsFile}`);
+  try {
+    const loaded: unknown = JSON.parse(fs.readFileSync(presetsFile, "utf8"));
+    if (loaded && typeof loaded === "object" && !Array.isArray(loaded)) {
+      const obj = loaded as { presets?: unknown; idx?: unknown; custom?: unknown };
+      if (obj.presets && typeof obj.presets === "object") {
+        presetStore = obj.presets as Record<string, unknown>;
+      }
+      if (obj.idx && typeof obj.idx === "object" && !Array.isArray(obj.idx)) {
+        presetIdxStore = obj.idx as Record<string, unknown>;
+      }
+      if (Array.isArray(obj.custom)) customModes = obj.custom;
+    }
+  } catch {
+    // no presets saved yet
+  }
+
   const resolveClip = (args: unknown): MidiClipV | null => {
     try {
       return ctx.getObjectFromHandle(args as Handle, MidiClip);
@@ -711,10 +841,35 @@ export function activate(activation: ActivationContext) {
 
       for (;;) {
         const running = active.get(clip);
+
+        // Mirror the real clip in the preview: actual notes, bar length, the
+        // live tempo, and the running animation's clock (phase-locked).
+        let view: PreviewView = null;
+        try {
+          const barLen = running ? running.barLen : barLengthOf(clip);
+          const rest = running
+            ? running.rest
+            : ((): NoteDescription[] => {
+                const cur = clip.notes;
+                return cur.length > 0 ? cur : seedNotes(barLen);
+              })();
+          view = {
+            tempo: getTempo(),
+            barLen,
+            clockMs: running ? running.simClockMs : 0,
+            paused: running ? running.paused : false,
+            rest: rest
+              .slice(0, 32) // plenty for a 312px preview
+              .map((n) => [n.startTime, n.pitch, n.duration]),
+          };
+        } catch (err) {
+          console.warn("midiMove: could not snapshot clip for preview", err);
+        }
+
         let result: string;
         try {
           result = await ctx.ui.showModalDialog(
-            chooserUrl(running ? running.spec : null),
+            chooserUrl(running ? running.spec : null, view),
             360,
             500, // as short as the layout allows — the dialog is always screen-
             // centered (no position API), so less height = higher bottom edge
@@ -732,13 +887,44 @@ export function activate(activation: ActivationContext) {
           return; // dialog dismissed → done
         }
 
+        // The window posts its (locally edited) preset lists and custom modes
+        // with every action; persist whatever came back.
+        let dirty = false;
+        if (
+          choice.presets &&
+          typeof choice.presets === "object" &&
+          !Array.isArray(choice.presets)
+        ) {
+          presetStore = choice.presets;
+          dirty = true;
+        }
+        if (
+          choice.presetIdx &&
+          typeof choice.presetIdx === "object" &&
+          !Array.isArray(choice.presetIdx)
+        ) {
+          presetIdxStore = choice.presetIdx;
+          dirty = true;
+        }
+        if (Array.isArray(choice.customModes)) {
+          customModes = choice.customModes.slice(0, 50);
+          dirty = true;
+        }
+        if (dirty) persistUserData();
+
         if (choice.action === "apply" && choice.modeId) {
           const spec = specFromChoice(choice);
           lastOptions = spec.options;
           lastPeriodBeats = spec.periodBeats;
           if (spec.path) lastPath = spec.path;
-          startAnimation(clip, spec);
+          applyAnimation(clip, spec);
           // loop: reopen so the user can keep auditioning
+        } else if (choice.action === "undo") {
+          undoAnimation(clip);
+          // loop: reopen showing the restored state
+        } else if (choice.action === "pause") {
+          togglePause(clip);
+          // loop: reopen with the frozen (or resumed) state
         } else if (choice.action === "stop") {
           stopAnimation(clip, true);
           // loop: reopen
@@ -754,6 +940,16 @@ export function activate(activation: ActivationContext) {
     if (clip) stopAnimation(clip, true);
   });
 
+  ctx.commands.registerCommand("midiMove.undo", (args: unknown) => {
+    const clip = resolveClip(args);
+    if (clip) undoAnimation(clip);
+  });
+
+  ctx.commands.registerCommand("midiMove.pause", (args: unknown) => {
+    const clip = resolveClip(args);
+    if (clip) togglePause(clip);
+  });
+
   // Instant, windowless switching: one menu item per mode that retargets the
   // live clip immediately. No modal means nothing to re-center or blink — this
   // is the smooth way to keep changing the animation while it runs. Switching
@@ -767,7 +963,7 @@ export function activate(activation: ActivationContext) {
   for (const mode of MODES) {
     ctx.commands.registerCommand(`midiMove.mode.${mode.id}`, (args: unknown) => {
       const clip = resolveClip(args);
-      if (clip) startAnimation(clip, specForMode(mode.id));
+      if (clip) applyAnimation(clip, specForMode(mode.id));
     });
     ctx.ui.registerContextMenuAction(
       "MidiClip",
@@ -775,6 +971,16 @@ export function activate(activation: ActivationContext) {
       `midiMove.mode.${mode.id}`,
     );
   }
+  ctx.ui.registerContextMenuAction(
+    "MidiClip",
+    "midiMove: Pause / resume",
+    "midiMove.pause",
+  );
+  ctx.ui.registerContextMenuAction(
+    "MidiClip",
+    "midiMove: Undo apply",
+    "midiMove.undo",
+  );
   ctx.ui.registerContextMenuAction(
     "MidiClip",
     "midiMove: Stop animation",

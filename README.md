@@ -4,7 +4,7 @@ Animates a MIDI clip's notes in real time — swing, orbit, ripple, drift, bounc
 
 ## Download
 
-[Download midiMove-1.1.0.ablx](https://github.com/AntiWorkProTwerk/midiMove/releases/latest/download/midiMove-1.1.0.ablx)
+[Download midiMove-1.2.0.ablx](https://github.com/AntiWorkProTwerk/midiMove/releases/latest/download/midiMove-1.2.0.ablx)
 
 ## Use
 
@@ -24,11 +24,15 @@ Eight modes — Pendulum, Orbit, Wave, Drift, Bounce, Cascade, Pulse and a freeh
 | **Snap to key** | Quantizes the animated pitches to Live's current key/scale. |
 | **Spread** (Draw) | Fans the notes out along the drawn path — 0 rides together, 1 spaces them evenly. |
 | **Loop** (Draw) | How many beats one trip around the drawn path takes. |
+| **Pause** | Freezes the notes exactly where they are (Stop snaps them back to rest); press again to resume. |
+| **Undo** | Steps back through the applied animations; when none is left it restores the original notes. (Live's own Ctrl+Z can't help here — every animation frame is an edit.) |
+| **Presets 💾 🗑 ◀ n/N ▶** | The floppy saves the current settings as a preset for the selected mode, the trash deletes the shown one, and the arrows flip through them — the controls slide into place but nothing touches the clip until **Apply**. |
+| **➕ / 🗑 (header)** | ➕ saves the current setup as a **named preset mode** that lives in the carousel after the built-ins; the header trash deletes custom ones. |
 | **Share code** | **Export** copies an `mm1:` code of the current animation; **Import** pastes one in to load it. |
 
 ## Build from source
 
 ```bash
 npm install
-npm run package   # → midiMove-1.1.0.ablx
+npm run package   # → midiMove-1.2.0.ablx
 ```
