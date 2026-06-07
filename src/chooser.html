@@ -62,9 +62,8 @@
       justify-content: space-between;
     }
     .title { font-size: 1.55rem; color: var(--c-text-primary); }
-    .head-nav { display: flex; align-items: center; gap: 0.45em; }
+    .head-nav { display: flex; align-items: center; gap: 0.4em; }
     .count { font-size: 1rem; color: var(--c-text-secondary); font-variant-numeric: tabular-nums; margin-right: 0.35em; }
-    .nav-btn { width: 30px; padding: 0; text-align: center; }
 
     #preview {
       width: 100%;
@@ -82,18 +81,24 @@
     }
 
     .alx-button {
-      font-size: 1rem;
+      font-size: 0.92rem;
       line-height: 1;
       background-color: var(--c-control-bg--500);
       color: var(--c-text-primary);
       border: 1px solid var(--c-control-border);
-      height: 22px;
-      padding: 0 1em;
-      border-radius: 1em;
+      height: 20px;
+      padding: 0 0.75em;
+      border-radius: 4px;
       cursor: pointer;
       user-select: none;
       white-space: nowrap;
     }
+    .icon-btn {
+      width: 20px; height: 20px; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.6rem;
+    }
+    .icon-btn svg { width: 12px; height: 12px; }
     .alx-button:hover { background-color: var(--c-control-bg--400); }
     .alx-button:active,
     .alx-button.primary {
@@ -104,6 +109,7 @@
     .alx-button:focus-visible { outline: 2px solid var(--c-control-outline); }
 
     .actions { display: flex; gap: 0.6em; }
+    .actions .alx-button { height: 24px; border-radius: 5px; }
     .actions .primary { flex: 1; }
 
     .controls { display: flex; flex-wrap: wrap; gap: 0.7em 1.2em; }
@@ -112,13 +118,42 @@
     .ctl { display: flex; flex-direction: column; gap: 0.3em; font-size: 0.95rem; color: var(--c-text-secondary); }
     .ctl > span { display: flex; justify-content: space-between; }
     .ctl output { color: var(--c-text-primary); font-variant-numeric: tabular-nums; }
-    .ctl.check { flex-direction: row; align-items: center; gap: 0.5em; cursor: pointer; }
-    .ctl.check small { color: var(--c-text-secondary); opacity: 0.75; margin-left: 0.3em; }
+
+    /* Snap-to-key as a toggle chip: same shape language as the buttons, and it
+       lights up in the accent when active instead of a bare checkbox. */
+    .ctl.check { flex-direction: row; align-items: center; cursor: pointer; }
+    .ctl.check input { display: none; }
+    .ctl.check .chip {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 20px; padding: 0 0.8em; border-radius: 4px; font-size: 0.92rem;
+      background-color: var(--c-control-bg--500);
+      border: 1px solid var(--c-control-border);
+      color: var(--c-text-secondary);
+      user-select: none; white-space: nowrap;
+      transition: background-color 80ms, color 80ms;
+    }
+    .ctl.check .chip:hover { background-color: var(--c-control-bg--400); }
+    .ctl.check input:checked + .chip {
+      background-color: var(--c-highlight--primary);
+      border-color: var(--c-highlight--primary);
+      color: var(--c-control-on-foreground);
+    }
+    .ctl.check .chip small { opacity: 0.7; margin-left: 0.3em; }
 
     /* Everything from the share row down is pinned to the bottom of the card,
        so spare height sits between the controls and the action bar instead of
        dangling as dead space below the buttons. */
     .share-row { margin-top: auto; }
+
+    .preset-row { display: flex; align-items: center; justify-content: space-between; }
+    .preset-label { font-size: 0.95rem; color: var(--c-text-secondary); margin-right: 0.5em; }
+    .preset-nav { display: flex; align-items: center; gap: 0.35em; }
+    .preset-nav .icon-btn { width: 18px; height: 18px; font-size: 0.5rem; }
+    .preset-nav #presetPrev { margin-left: 0.55em; } /* breathe between icons and pager */
+    .preset-num {
+      font-size: 0.9rem; color: var(--c-text-primary); min-width: 2.4em;
+      text-align: center; font-variant-numeric: tabular-nums;
+    }
     .alx-range { width: 100%; accent-color: var(--c-highlight--primary); cursor: pointer; }
     input[type="checkbox"] { accent-color: var(--c-highlight--primary); cursor: pointer; }
 
@@ -132,7 +167,7 @@
 
     .share-row { display: flex; align-items: center; gap: 0.5em; }
     .share-label { font-size: 0.95rem; color: var(--c-text-secondary); }
-    .share-row .alx-button { height: 20px; padding: 0 0.8em; }
+    .share-row .alx-button { height: 18px; padding: 0 0.7em; font-size: 0.88rem; }
     .share-hint { font-size: 0.9rem; color: var(--c-highlight--primary); margin-left: auto; }
     .share-panel { display: flex; gap: 0.5em; align-items: stretch; }
     .alx-textarea {
@@ -142,6 +177,12 @@
     }
     .share-actions { display: flex; flex-direction: column; gap: 0.3em; }
     .share-actions .alx-button { height: 20px; padding: 0 0.6em; }
+    .name-input {
+      flex: 1; height: 24px; font: inherit; font-size: 0.95rem; padding: 0 0.6em;
+      background-color: hsl(0, 0%, 12%); color: var(--c-text-primary);
+      border: 1px solid var(--c-control-border); border-radius: 4px;
+    }
+    .name-input::placeholder { color: var(--c-text-secondary); }
 
     .running {
       display: flex;
@@ -153,7 +194,8 @@
       padding-top: 0.45em;
     }
     .running b { color: var(--c-highlight--primary); font-weight: 500; }
-    .running .alx-button { margin-left: auto; height: 20px; padding: 0 0.85em; }
+    .running .alx-button { padding: 0 0.7em; }
+    .running #pause { margin-left: auto; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -163,9 +205,15 @@
     <div class="head">
       <div class="title" id="name">—</div>
       <div class="head-nav">
+        <button class="alx-button icon-btn" id="addMode" title="Save current settings as a new preset mode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button class="alx-button icon-btn" id="delMode" title="Delete this preset mode" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
         <span class="count" id="count">—</span>
-        <button class="alx-button nav-btn" id="prev" title="Previous mode">◀</button>
-        <button class="alx-button nav-btn" id="next" title="Next mode">▶</button>
+        <button class="alx-button icon-btn" id="prev" title="Previous mode">◀</button>
+        <button class="alx-button icon-btn" id="next" title="Next mode">▶</button>
       </div>
     </div>
     <canvas id="preview" width="312" height="120"></canvas>
@@ -201,7 +249,7 @@
       </label>
       <label class="ctl check">
         <input type="checkbox" id="snap" />
-        <span>Snap to key <small id="scaleName"></small></span>
+        <span class="chip">Snap to key <small id="scaleName"></small></span>
       </label>
     </div>
     <div class="share-row">
@@ -217,13 +265,34 @@
         <button class="alx-button" id="shareCancel">✕</button>
       </div>
     </div>
+    <div class="share-panel" id="namePanel" hidden>
+      <input id="modeName" class="name-input" placeholder="Name your preset mode…" spellcheck="false" />
+      <div class="share-actions">
+        <button class="alx-button primary" id="nameOk">Save</button>
+        <button class="alx-button" id="nameCancel">✕</button>
+      </div>
+    </div>
+    <div class="preset-row">
+      <span class="preset-label">Presets</span>
+      <span class="preset-nav">
+        <button class="alx-button icon-btn" id="savePreset" title="Save the current settings as a preset for this mode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        </button>
+        <button class="alx-button icon-btn" id="deletePreset" title="Delete this preset">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+        <button class="alx-button icon-btn" id="presetPrev" title="Previous preset">◀</button>
+        <span class="preset-num" id="presetNum">–</span>
+        <button class="alx-button icon-btn" id="presetNext" title="Next preset">▶</button>
+      </span>
+    </div>
     <div class="actions">
-      <button class="alx-button" id="close">Close</button>
       <button class="alx-button primary" id="apply">Apply</button>
     </div>
     <div class="running" id="running" hidden>
       Running: <b id="runningName"></b>
-      <button class="alx-button" id="stop">Stop</button>
+      <button class="alx-button" id="pause" title="Freeze the notes where they are">Pause</button>
+      <button class="alx-button" id="undo" title="Back to the previous applied animation">Undo</button>
     </div>
   </div>
 
@@ -243,6 +312,30 @@
     // Live, user-adjustable state (sliders + checkbox + draw pad).
     let width = OPT.width, height = OPT.height, snap = OPT.snapToKey;
     let speed = typeof OPT.speed === "number" ? OPT.speed : 1;
+
+    // Per-mode preset lists ({ [modeId]: [{w,h,sp,k, path?,spread?,period?}] }).
+    // Edited locally (Save is instant, no dialog blink) and posted back with
+    // every action so the host persists them.
+    const presets = CONFIG.presets && typeof CONFIG.presets === "object" && !Array.isArray(CONFIG.presets)
+      ? CONFIG.presets
+      : {};
+    const presetIdx = CONFIG.presetIdx && typeof CONFIG.presetIdx === "object" && !Array.isArray(CONFIG.presetIdx)
+      ? CONFIG.presetIdx
+      : {}; // remembered pager position per mode, restored across reopens
+
+    // User-named "preset modes": saved snapshots that live in the carousel
+    // after the built-ins. Shape: { name, m: <base mode id>, w,h,sp,k, path?,spread?,period? }.
+    const customModes = Array.isArray(CONFIG.customModes) ? CONFIG.customModes : [];
+    function viewList() {
+      return MODES.concat(customModes.map((c) => ({
+        id: c.m,
+        name: c.name,
+        custom: c,
+        description: "Custom preset of " + ((MODES.find((m) => m.id === c.m) || {}).name || c.m) + ".",
+      })));
+    }
+    let VMODES = viewList();
+    const cur = () => VMODES[index]; // the carousel entry under the cursor
     let drawnPath = Array.isArray(CONFIG.path) ? CONFIG.path.map((p) => [p[0], p[1]]) : [];
     let spread = typeof CONFIG.spread === "number" ? CONFIG.spread : 0;
     let period = (typeof CONFIG.periodBeats === "number" && CONFIG.periodBeats > 0) ? CONFIG.periodBeats : DEFAULT_PERIOD;
@@ -272,6 +365,7 @@
         params: [JSON.stringify({
           action, modeId, width, height, snapToKey: snap, speed,
           path: drawnPath, spread, periodBeats: period,
+          presets, presetIdx, customModes, // locally edited lists + pager position
         })],
       });
     }
@@ -329,12 +423,20 @@
     }
 
     // ----- canvas rendering -------------------------------------------------
-    const BAR = 4;                 // preview bar length (beats)
-    const PREVIEW_BPS = 2;         // 120 BPM → 2 beats/sec
-    const PCENTER = 64, PRANGE = 24;
-    const REST = [                 // a chord spread across the bar
-      { x: 0.6, y: 58 }, { x: 1.4, y: 62 }, { x: 2.2, y: 65 }, { x: 3.0, y: 69 },
-    ];
+    // The preview mirrors the REAL clip: its notes, bar length, project tempo,
+    // and (when an animation is running) the engine's exact clock — all injected
+    // by the host as CONFIG.view, so window and clip move in phase.
+    const VIEW = CONFIG.view || null;
+    const TEMPO = VIEW && VIEW.tempo > 0 ? VIEW.tempo : 120;
+    const CLOCK0 = VIEW && typeof VIEW.clockMs === "number" ? VIEW.clockMs : 0;
+    const BAR = VIEW && VIEW.barLen > 0 ? VIEW.barLen : 4;
+    const REST = VIEW && Array.isArray(VIEW.rest) && VIEW.rest.length
+      ? VIEW.rest.map((n) => ({ x: n[0], y: n[1], d: n[2] || 0.5 }))
+      : [{ x: 0.6, y: 58, d: 0.45 }, { x: 1.4, y: 62, d: 0.45 }, { x: 2.2, y: 65, d: 0.45 }, { x: 3.0, y: 69, d: 0.45 }];
+    let pLo = Infinity, pHi = -Infinity;
+    for (const r of REST) { pLo = Math.min(pLo, r.y); pHi = Math.max(pHi, r.y); }
+    const PCENTER = (pLo + pHi) / 2;
+    const PRANGE = Math.max(24, pHi - pLo + 20); // headroom for the motion
     const COL = {
       panel: "hsl(0, 0%, 12%)",
       grid: "hsl(0, 0%, 18%)",
@@ -346,8 +448,8 @@
     const cv = document.getElementById("preview");
     const cx = cv.getContext("2d");
     const W = cv.width, H = cv.height, PAD = 16;
-    const NOTE_W = (0.45 / BAR) * (W - 2 * PAD);
-    const NOTE_H = Math.max(6, (1 / PRANGE) * (H - 2 * PAD) * 1.6);
+    const noteW = (d) => Math.max(5, (d / BAR) * (W - 2 * PAD)); // real note lengths
+    const NOTE_H = Math.max(5, (1 / PRANGE) * (H - 2 * PAD) * 1.6);
     const xToPx = (b) => PAD + (b / BAR) * (W - 2 * PAD);
     const yToPx = (pitch) => PAD + (1 - (pitch - (PCENTER - PRANGE / 2)) / PRANGE) * (H - 2 * PAD);
     const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -368,7 +470,8 @@
       cx.fillRect(0, 0, W, H);
       cx.lineWidth = 1;
       cx.strokeStyle = COL.grid;
-      for (let b = 1; b < BAR; b++) {
+      const gridStep = BAR > 8 ? 4 : 1; // beat lines, or bar lines for long clips
+      for (let b = gridStep; b < BAR; b += gridStep) {
         const x = Math.round(xToPx(b)) + 0.5;
         cx.beginPath(); cx.moveTo(x, PAD * 0.5); cx.lineTo(x, H - PAD * 0.5); cx.stroke();
       }
@@ -376,17 +479,17 @@
       const yc = Math.round(yToPx(PCENTER)) + 0.5;
       cx.beginPath(); cx.moveTo(PAD * 0.5, yc); cx.lineTo(W - PAD * 0.5, yc); cx.stroke();
 
-      const id = MODES[index].id, n = REST.length;
+      const id = cur().id, n = REST.length;
       // rest ghosts first
       cx.fillStyle = COL.ghost;
-      for (const rest of REST) { rr(xToPx(rest.x), yToPx(rest.y) - NOTE_H / 2, NOTE_W, NOTE_H, 3); cx.fill(); }
-      // animated notes
+      for (const rest of REST) { rr(xToPx(rest.x), yToPx(rest.y) - NOTE_H / 2, noteW(rest.d), NOTE_H, 3); cx.fill(); }
+      // animated notes — same rounding as the engine's place() for a 1:1 match
       cx.fillStyle = COL.note;
       REST.forEach((rest, i) => {
         const d = disp(id, i, n, rest.x, rest.y, beats);
         const px = xToPx(clampNum(rest.x + d.dx * width, 0, BAR));
-        const py = yToPx(clampNum(snapPitch(rest.y + d.dy * height), PCENTER - PRANGE / 2, PCENTER + PRANGE / 2));
-        rr(px, py - NOTE_H / 2, NOTE_W, NOTE_H, 3);
+        const py = yToPx(clampNum(snapPitch(Math.round(rest.y + d.dy * height)), PCENTER - PRANGE / 2, PCENTER + PRANGE / 2));
+        rr(px, py - NOTE_H / 2, noteW(rest.d), NOTE_H, 3);
         cx.fill();
       });
     }
@@ -442,42 +545,51 @@
     }
 
     function paint(beats) {
-      if (MODES[index].id === "path") drawPad(beats);
+      if (cur().id === "path") drawPad(beats);
       else draw(beats);
     }
 
     let t0 = null;
     function frame(now) {
       if (t0 === null) t0 = now;
-      paint(((now - t0) / 1000) * PREVIEW_BPS * speed);
+      // Continue the engine's clock at the real project tempo — beats here are
+      // computed with the exact formula the engine uses (elapsed × speed × bps),
+      // so the preview stays in phase with the animating clip. While the clip
+      // is paused, hold the clock so the preview freezes with it.
+      const adv = VIEW && VIEW.paused ? 0 : now - t0;
+      paint(((CLOCK0 + adv) / 1000) * speed * (TEMPO / 60));
       requestAnimationFrame(frame);
     }
 
     // ----- carousel state ---------------------------------------------------
     let index = 0;
     if (CONFIG.activeModeId) {
-      const k = MODES.findIndex((m) => m.id === CONFIG.activeModeId);
+      const k = VMODES.findIndex((m) => m.id === CONFIG.activeModeId);
       if (k >= 0) index = k;
     }
     function render() {
-      const m = MODES[index];
+      const m = cur();
       document.getElementById("name").textContent = m.name;
-      document.getElementById("count").textContent = (index + 1) + " / " + MODES.length;
+      document.getElementById("count").textContent = (index + 1) + " / " + VMODES.length;
       document.getElementById("desc").textContent = m.description;
       const isDraw = m.id === "path";
       document.getElementById("drawControls").hidden = !isDraw;
       cv.style.cursor = isDraw ? "crosshair" : "default";
+      document.getElementById("delMode").hidden = !m.custom;
+      updatePresetRow();
     }
     function step(delta) {
-      index = (index + delta + MODES.length) % MODES.length;
+      index = (index + delta + VMODES.length) % VMODES.length;
+      const c = cur().custom;
+      if (c) loadPreset(c); // stepping onto a custom mode slides its settings in
       render();
     }
 
     document.getElementById("prev").onclick = () => step(-1);
     document.getElementById("next").onclick = () => step(1);
-    document.getElementById("apply").onclick = () => closeWith("apply", MODES[index].id);
-    document.getElementById("close").onclick = () => closeWith("close", null);
-    document.getElementById("stop").onclick = () => closeWith("stop", null);
+    document.getElementById("apply").onclick = () => closeWith("apply", cur().id);
+    document.getElementById("undo").onclick = () => closeWith("undo", null);
+    document.getElementById("pause").onclick = () => closeWith("pause", null);
 
     // ----- amplitude sliders + snap-to-key toggle ---------------------------
     const widthEl = document.getElementById("width");
@@ -542,7 +654,7 @@
       return pxToNorm((e.clientX - rect.left) * (W / rect.width), (e.clientY - rect.top) * (H / rect.height));
     }
     cv.addEventListener("pointerdown", (e) => {
-      if (MODES[index].id !== "path") return;
+      if (cur().id !== "path") return;
       drawing = true; rawStroke = [padPoint(e)];
       try { cv.setPointerCapture(e.pointerId); } catch (err) { /* not all webviews */ }
       e.preventDefault();
@@ -557,7 +669,7 @@
     const b64e = (str) => btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     const b64d = (s) => { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return decodeURIComponent(escape(atob(s))); };
     function currentShareObj() {
-      const m = MODES[index].id;
+      const m = cur().id;
       const o = { v: 1, m, w: Math.round(width * 100), h: Math.round(height * 100), k: snap ? 1 : 0, b: period, sp: Math.round(speed * 100) };
       if (m === "path" && drawnPath.length >= 2) {
         o.s = Math.round(spread * 100);
@@ -566,7 +678,7 @@
       return o;
     }
     function applyShareObj(o) {
-      const k = MODES.findIndex((m) => m.id === o.m);
+      const k = VMODES.findIndex((m) => m.id === o.m);
       if (k >= 0) index = k;
       if (typeof o.w === "number") width = clampNum(o.w / 100, 0.25, 3);
       if (typeof o.h === "number") height = clampNum(o.h / 100, 0.25, 3);
@@ -616,18 +728,129 @@
       }
     };
 
+    // ----- presets: save + ◀ n/N ▶ flipper ----------------------------------
+    const presetNum = document.getElementById("presetNum");
+    function updatePresetRow() {
+      const id = cur().id, list = presets[id] || [];
+      presetNum.textContent = list.length
+        ? (((presetIdx[id] ?? 0) % list.length) + 1) + "/" + list.length
+        : "–";
+    }
+
+    // Slide the three sliders to the preset's values with a quick ease-out.
+    function animateTo(tw, th, ts) {
+      const fw = width, fh = height, fs = speed;
+      const start = performance.now(), dur = 160;
+      function stepA(now) {
+        const t = Math.min(1, (now - start) / dur);
+        const e = 1 - Math.pow(1 - t, 3);
+        width = fw + (tw - fw) * e;
+        height = fh + (th - fh) * e;
+        speed = fs + (ts - fs) * e;
+        widthEl.value = width; heightEl.value = height; speedEl.value = speed;
+        syncLabels();
+        if (t < 1) requestAnimationFrame(stepA);
+      }
+      requestAnimationFrame(stepA);
+    }
+
+    // Loads a preset into the controls — does NOT apply; Apply is still yours.
+    function loadPreset(p) {
+      animateTo(
+        typeof p.w === "number" ? clampNum(p.w, 0.25, 3) : width,
+        typeof p.h === "number" ? clampNum(p.h, 0.25, 3) : height,
+        typeof p.sp === "number" ? clampNum(p.sp, 0.1, 2) : speed,
+      );
+      snap = !!p.k; snapEl.checked = snap;
+      if (cur().id === "path") {
+        if (Array.isArray(p.path)) drawnPath = p.path.map((q) => [q[0], q[1]]);
+        if (typeof p.spread === "number") { spread = clampNum(p.spread, 0, 1); spreadEl.value = spread; }
+        if (typeof p.period === "number" && p.period > 0) { period = p.period; loopEl.value = String(period); }
+      }
+    }
+
+    function currentPreset() {
+      const p = { w: width, h: height, sp: speed, k: snap ? 1 : 0 };
+      if (cur().id === "path") { p.path = drawnPath; p.spread = spread; p.period = period; }
+      return p;
+    }
+
+    document.getElementById("savePreset").onclick = () => {
+      const id = cur().id;
+      const list = (presets[id] = presets[id] || []);
+      list.push(currentPreset());
+      if (list.length > 20) list.shift();
+      presetIdx[id] = list.length - 1;
+      updatePresetRow();
+    };
+    document.getElementById("deletePreset").onclick = () => {
+      const id = cur().id, list = presets[id] || [];
+      if (!list.length) return;
+      const i = (presetIdx[id] ?? 0) % list.length;
+      list.splice(i, 1);
+      presetIdx[id] = list.length ? Math.min(i, list.length - 1) : 0;
+      if (!list.length) delete presets[id];
+      updatePresetRow();
+    };
+    function stepPreset(delta) {
+      const id = cur().id, list = presets[id] || [];
+      if (!list.length) return;
+      presetIdx[id] = ((presetIdx[id] ?? 0) + delta + list.length) % list.length;
+      loadPreset(list[presetIdx[id]]);
+      updatePresetRow();
+    }
+    document.getElementById("presetPrev").onclick = () => stepPreset(-1);
+    document.getElementById("presetNext").onclick = () => stepPreset(1);
+
+    // ----- custom preset modes (named carousel entries) ----------------------
+    const namePanel = document.getElementById("namePanel");
+    const modeNameEl = document.getElementById("modeName");
+    document.getElementById("addMode").onclick = () => {
+      namePanel.hidden = false;
+      modeNameEl.value = "";
+      modeNameEl.focus();
+    };
+    document.getElementById("nameCancel").onclick = () => { namePanel.hidden = true; };
+    document.getElementById("nameOk").onclick = () => {
+      const nm = modeNameEl.value.trim();
+      if (!nm) { modeNameEl.focus(); return; }
+      const c = Object.assign({ name: nm, m: cur().id }, currentPreset());
+      customModes.push(c);
+      if (customModes.length > 30) customModes.shift();
+      VMODES = viewList();
+      index = VMODES.length - 1;
+      namePanel.hidden = true;
+      render();
+    };
+    document.getElementById("delMode").onclick = () => {
+      const c = cur().custom;
+      if (!c) return;
+      const k = customModes.indexOf(c);
+      if (k >= 0) customModes.splice(k, 1);
+      VMODES = viewList();
+      if (index >= VMODES.length) index = VMODES.length - 1;
+      render();
+    };
+
     if (CONFIG.activeModeId) {
       const am = MODES.find((m) => m.id === CONFIG.activeModeId);
       if (am) {
         document.getElementById("running").hidden = false;
         document.getElementById("runningName").textContent = am.name;
+        if (VIEW && VIEW.paused) document.getElementById("pause").textContent = "Resume";
       }
     }
 
     document.addEventListener("keydown", (e) => {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) {
+        // typing in a field — don't steal keys; Enter in the name field saves
+        if (e.key === "Enter" && t.id === "modeName") document.getElementById("nameOk").onclick();
+        return;
+      }
       if (e.key === "ArrowLeft") step(-1);
       else if (e.key === "ArrowRight") step(1);
-      else if (e.key === "Enter") closeWith("apply", MODES[index].id);
+      else if (e.key === "Enter") closeWith("apply", cur().id);
       else if (e.key === "Escape") closeWith("close", null);
     });
 
